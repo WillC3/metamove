@@ -1,5 +1,17 @@
 from ruamel.yaml import YAML
 
+def format_yaml(input_file: str, output_file: str) -> None:
+    """Format a YAML file using ruamel.yaml without any transformations."""
+    yaml = YAML()
+    yaml.preserve_quotes = True
+    yaml.indent(mapping=2, sequence=4, offset=2)
+
+    with open(input_file, 'r') as f:
+        data = yaml.load(f)
+
+    with open(output_file, 'w') as f:
+        yaml.dump(data, f, transform=lambda node: node)
+
 def transform_yaml(input_file: str, output_file: str) -> None:
     yaml = YAML()
     yaml.preserve_quotes = True
@@ -18,7 +30,7 @@ def transform_yaml(input_file: str, output_file: str) -> None:
                         node['config'] = {}
                         new_keys = []
                         inserted_config = False
-                        
+
                         insertion_point = None
                         if 'config' in keys:
                             insertion_point = keys.index('config')
@@ -26,17 +38,17 @@ def transform_yaml(input_file: str, output_file: str) -> None:
                             insertion_point = keys.index('meta')
                         elif 'tags' in keys:
                             insertion_point = keys.index('tags')
-                        
+
                         for i, key in enumerate(keys):
                             if key not in ['config']:
                                 new_keys.append(key)
                             if i == insertion_point and not inserted_config:
                                 new_keys.append('config')
                                 inserted_config = True
-                        
+
                         if not inserted_config:
                             new_keys.append('config')
-                            
+
                         new_node = {}
                         for k in new_keys:
                             if k in node:
@@ -71,4 +83,4 @@ def transform_yaml(input_file: str, output_file: str) -> None:
     process_node(data)
 
     with open(output_file, 'w') as f:
-        yaml.dump(data, f, transform=lambda node: node) 
+        yaml.dump(data, f, transform=lambda node: node)
