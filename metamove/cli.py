@@ -1,14 +1,17 @@
 import os
 from typing import List
 import click
-from metamove.yaml_transformer import transform_yaml
+from metamove.yaml_transformer import transform_yaml, format_yaml
 
-def process_files(input_files: List[str], output_dir: str, in_place: bool = False) -> None:
+def process_files(input_files: List[str], output_dir: str, in_place: bool = False, format_only: bool = False) -> None:
+    transformer = format_yaml if format_only else transform_yaml
+    action_label = "Formatting" if format_only else "Transforming"
+    
     if not in_place:
         click.echo(f"Creating output directory: {output_dir}")
         os.makedirs(output_dir, exist_ok=True)
     
-    click.echo("\nStarting transformation...")
+    click.echo(f"\nStarting {action_label.lower()}...")
     successful = 0
     failed = 0
     failed_files = []
@@ -18,21 +21,21 @@ def process_files(input_files: List[str], output_dir: str, in_place: bool = Fals
             try:
                 if in_place:
                     output_file = input_file
-                    files.label = f"Transforming in place: {click.style(input_file, fg='blue')}"
+                    files.label = f"{action_label} in place: {click.style(input_file, fg='blue')}"
                 else:
                     output_file = os.path.join(output_dir, os.path.basename(input_file))
-                    files.label = f"Transforming: {click.style(input_file, fg='blue')}"
+                    files.label = f"{action_label}: {click.style(input_file, fg='blue')}"
                 
-                transform_yaml(input_file, output_file)
+                transformer(input_file, output_file)
                 successful += 1
             except Exception as e:
                 failed += 1
                 failed_files.append((input_file, str(e)))
     
-    click.echo("\nTransformation Summary:")
-    click.echo(click.style(f"✓ Successfully transformed: {successful} files", fg='green', bold=True))
+    click.echo(f"\n{action_label} Summary:")
+    click.echo(click.style(f"✓ Successfully processed: {successful} files", fg='green', bold=True))
     if failed > 0:
-        click.echo(click.style(f"✗ Failed to transform: {failed} files", fg='red', bold=True), err=True)
+        click.echo(click.style(f"✗ Failed to process: {failed} files", fg='red', bold=True), err=True)
         for file, error in failed_files:
             click.echo(click.style(f"  - {file}: {error}", fg='red'), err=True)
 
@@ -42,11 +45,15 @@ def process_files(input_files: List[str], output_dir: str, in_place: bool = Fals
     help='Directory where transformed files will be saved (default: transformed)')
 @click.option('--in-place', '-i', is_flag=True, 
     help='Modify files in place instead of creating copies (use with caution)')
-def cli(input_files: List[str], output_dir: str, in_place: bool) -> None:
+@click.option('--format-only', '-f', is_flag=True,
+    help='Only format YAML files without moving meta/tags to config')
+def cli(input_files: List[str], output_dir: str, in_place: bool, format_only: bool) -> None:
     """Transform YAML files by moving meta and tags into config sections.
 
     This tool helps migrate your dbt YAML files to be compatible with dbt 1.10
     by moving meta and tags properties under config sections.
+
+    Use --format-only to prepare files with ruamel formatting without the transformation.
 
     Examples:
 
@@ -58,6 +65,9 @@ def cli(input_files: List[str], output_dir: str, in_place: bool) -> None:
 
         # Transform files in place
         $ metamove models/*.yml -i
+
+        # Format only (no meta/tags transformation)
+        $ metamove models/*.yml --format-only
 
         # Transform all YAML files in a dbt project
         $ metamove models/*.yml seeds/*.yml snapshots/*.yml
@@ -77,7 +87,7 @@ def cli(input_files: List[str], output_dir: str, in_place: bool) -> None:
         if not click.confirm("Do you want to continue?"):
             return
     
-    process_files(yaml_files, output_dir, in_place)
+    process_files(yaml_files, output_dir, in_place, format_only)
 
 if __name__ == '__main__':
     cli() 
