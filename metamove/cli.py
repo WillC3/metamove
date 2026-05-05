@@ -1,15 +1,20 @@
 import os
+import sys
 from typing import List
 import click
 from metamove.yaml_transformer import transform_yaml, format_yaml
 
-def process_files(input_files: List[str], output_dir: str, in_place: bool = False, format_only: bool = False) -> None:
+def process_files(input_files: List[str], output_dir: str, in_place: bool = False, format_only: bool = False, check: bool = False) -> int:
     transformer = format_yaml if format_only else transform_yaml
     action_label = "Formatting" if format_only else "Transforming"
     
     if not in_place:
         click.echo(f"Creating output directory: {output_dir}")
         os.makedirs(output_dir, exist_ok=True)
+    
+    if in_place and check:
+        click.echo("\nCannot use --check with --in-place. Please choose one or the other.")
+        return 1
     
     click.echo(f"\nStarting {action_label.lower()}...")
     successful = 0
@@ -27,7 +32,20 @@ def process_files(input_files: List[str], output_dir: str, in_place: bool = Fals
                     files.label = f"{action_label}: {click.style(input_file, fg='blue')}"
                 
                 transformer(input_file, output_file)
-                successful += 1
+                if check:
+                    if os.path.exists(output_file):
+                        with open(input_file, 'r') as f1, open(output_file, 'r') as f2:
+                            if f1.read() == f2.read():
+                                successful += 1
+                            else:
+                                failed += 1
+                                failed_files.append((input_file, "File would be modified by metamove"))
+                    else:
+                        failed += 1
+                        failed_files.append((input_file, "Output file not found after transformation"))
+                else:
+                    click.echo(click.style(f"✓ Successfully processed: {input_file}", fg='green'))
+                    successful += 1
             except Exception as e:
                 failed += 1
                 failed_files.append((input_file, str(e)))
@@ -38,6 +56,9 @@ def process_files(input_files: List[str], output_dir: str, in_place: bool = Fals
         click.echo(click.style(f"✗ Failed to process: {failed} files", fg='red', bold=True), err=True)
         for file, error in failed_files:
             click.echo(click.style(f"  - {file}: {error}", fg='red'), err=True)
+        click.echo(click.style("\nTo fix run: metamove -i <file_dir>/**/*", fg='yellow', bold=True), err=True)
+    
+    return failed
 
 @click.command()
 @click.argument('input_files', nargs=-1, type=click.Path(exists=True))
@@ -47,7 +68,9 @@ def process_files(input_files: List[str], output_dir: str, in_place: bool = Fals
     help='Modify files in place instead of creating copies (use with caution)')
 @click.option('--format-only', '-f', is_flag=True,
     help='Only format YAML files without moving meta/tags to config')
-def cli(input_files: List[str], output_dir: str, in_place: bool, format_only: bool) -> None:
+@click.option('--check', '-c', is_flag=True,
+    help='Check if files are already transformed without making changes')
+def cli(input_files: List[str], output_dir: str, in_place: bool, format_only: bool, check: bool) -> None:
     """Transform YAML files by moving meta and tags into config sections.
 
     This tool helps migrate your dbt YAML files to be compatible with dbt 1.10
@@ -69,6 +92,9 @@ def cli(input_files: List[str], output_dir: str, in_place: bool, format_only: bo
         # Format only (no meta/tags transformation)
         $ metamove models/*.yml --format-only
 
+        # Check if files are already transformed without making changes
+        $ metamove models/*.yml --check
+
         # Transform all YAML files in a dbt project
         $ metamove models/*.yml seeds/*.yml snapshots/*.yml
     """
@@ -87,7 +113,9 @@ def cli(input_files: List[str], output_dir: str, in_place: bool, format_only: bo
         if not click.confirm("Do you want to continue?"):
             return
     
-    process_files(yaml_files, output_dir, in_place, format_only)
+    failed_count = process_files(yaml_files, output_dir, in_place, format_only, check)
+    if failed_count > 0:
+        sys.exit(1)
 
 if __name__ == '__main__':
     cli() 
